@@ -1,0 +1,1024 @@
+# -*- coding: utf-8 -*-
+#+TITLE:  Research journal
+#+LANGUAGE: EN
+#+CATEGORY: INRIA
+#+STARTUP: overview indent inlineimages logdrawer hidestars
+#+TAGS: [ SIMGRID : SMPI(s) ]
+#+TAGS: [ PROGRAMMING : C(C) CPP(c) PYTHON(p) R(r) ]
+#+TAGS: [ TOOLS : ORGMODE(o) GIT(g) GDB ]
+#+TAGS: [ EXPERIMENTS(x) : EXP_SETUP EXP_EXEC EXP_RESULT EXP_ANALYSIS ]
+#+TAGS: TRACING(t) PERFORMANCE(X) PROFILING(R) BUG(b) PAPER(P) HPL(h) MEETING(m) G5K(G) VALIDATION(v) REPORT(V)
+#+TAGS: STAMPEDE(S) CBLAS(B)
+#+LOGGING: lognoterepeat
+#+SEQ_TODO: TODO(t!) STARTED(s!) WAITING(w@) APPT(a!) CANCELLED(c@) DEFERRED(f@) | DONE(d!)
+#+SEQ_TODO: UNREAD | READ
+#+SEQ_TODO: GOOD(g!) CRITICISM INTERESTING(w!) INVESTIGATE PROPOSAL
+#+SEQ_TODO: QUESTION(q!) | RESOLVED(r!)
+
+#+SETUPFILE: ~/.emacs.d/org-html-themes/setup/theme-bigblow-local.setup
+
+* 2018
+** 2018-01 January
+*** 2018-01-29 Monday
+**** A few thoughts on the experiment toolkits               :EXPERIMENTS:
+Several possibilities to describe an experiment:
+- Declarative (e.g. with an XML, YAML or JSON file, or a custom DSL).
+- Imperative with a custom DSL.
+- Imperative with a classical scripting language (Python, Ruby, Perl, etc.).
+
+I think that the two first ones are a bad idea. They look more elegant, but are much more limited. If our experiments
+fit in their intended use, it is alright. But as soon as we have an experiment a bit different, it could be very
+tedious. This is the same reasoning that for the scripts I had for Simgrid or dgemm experiments: using the command line
+or a configuration file is the first idea we have, but in the end having a small experiment script is the way to go (of
+course we want this script to be as small as possible).
+* 2019
+[...]
+* 2020
+** 2020-01 January
+*** 2020-01-06 Monday
+**** Discussion du lundi                                  :ARNAUD:MEETING:
+- Faire une calibration en fixant k à 128, 256, 512 (c'est tout ce qu'on a
+  besoin pour le papier HPL).
+- Regarder les fréquences pour toutes ces calibrations, comparer à HPL.
+**** DGEMM calibration with a fixed K :BLAS:G5K:DAHU:NOTEBOOK:PYTHON:ATTACH:
+:PROPERTIES:
+:LANGUAGE: python
+:VERSION: 3.7.3
+:Attachments: calibration_fixed_K.html
+:ID: f03f3fa45be6a0727943f78228b47e68919e95c455f7059cf74d2974f46a2ea63ddd7d8185763a1f215e570b88d4e660b52acfdc8dd5caaeb6fd6ff28a51d190
+:END:
+***** Summary
+I modified the expfile generation code in peanut (commit [[https://github.com/Ezibenroc/peanut/commit/829662b43df920e64e7907a7a9cc9a4bfb554fb5][829662b]]) to be able to
+fix one of the sizes:
+- The product m*n*k is regularly and uniformly distributed in [1,max_prod] (with
+  some randomness).
+- All the elements of the tuple are bounded by max_size.
+- A subset of (m, n, k) can be fixed with the argument fixed_sizes
+  (e.g. fixed_sizes={'k': 128}).
+
+In these experiments, K is fixed to either 128, 256 or 512.
+***** Notes
+First, we see in cells 3-4 that the performance with k=128 is clearly higher
+than the performance for k=256 or k=512.
+
+In cell 7, I compare the observed durations with the prediction (if the
+predictions were always perfect, all the points would be on the dashed line).
+We see here that for k=256 and k=512, most of the observed durations are higher
+than expected. For k=128, the observed durations are closer to the expectation,
+although a bit lower.
+
+This difference can be explained with the monitoring. There is nothing
+particular with the temperature (cell 12), but the core frequencies are higher
+for k=128 than for k=256 and k=512 (cell 14).
+*** 2020-01-07 Tuesday
+**** DGEMM calibration with a fixed K (several K values) :BLAS:G5K:DAHU:NOTEBOOK:PYTHON:ATTACH:
+:PROPERTIES:
+:LANGUAGE: python
+:VERSION: 3.7.3
+:Attachments: calibration_fixed_K.html
+:ID: 449323d852e748a9765ea9696d36f4f1d18c174ab8bbdd29358767cb378cbc942d51b009558df7431f0075443ef957a8b9c5127ef3811eb190968631475747dc
+:END:
+***** Summary
+This follows the experiment from yesterday. I took the three different expfiles
+(one with k=128, one with k=256 and one with k=512), I concatenated and shuffled
+them.
+
+Therefore, in this new experiment, I measured the durations of the exact same
+dgemm calls, but in a randomized way (whereas in the previous experiment I first
+measured for k=128, then k=256, then k=512).
+***** Notes
+By comparing this notebook with the notebook from the last entry, we can see
+clear differences.
+
+First, in cells 3 and 4, we used to have a better performance for k=128 than for
+k=256 and k=512. This is no longer the case, the points are now overlapping.
+
+Similarly in plot 7, the red points (k=128) are now above the dashed line,
+meaning that the predicted duration is lower than the observed one. In the
+previous experiment, the observed durations were shorter. Even for the green
+(k=256) and blue (k=512) points there seems to be a change, with more
+variability in the observations.
+
+Finally, there is a significant change in terms of frequencies. This seems to be
+a mix between the case k=128 and the cases k=256/k=512, with less high
+frequencies and more variability. For instance, on the node dahu-30:
+- In the previous experiment, for k=128, most of the points were between 2.3 and
+  2.4 GHz.
+- In the previous experiment, for k=256 and k=512, most of the points were
+  between 2.1 and 2.2 GHz.
+- However, in the new experiment, we do *not* see two modes. Instead, most of the
+  points are "uniformly" between 2.1 and 2.3 GHz.
+***** Conclusion
+By performing dgemm calls with different values of k in a same calibration, we
+obtain different performance than if we separate these calls with different k in
+distinct experiments, *because* of different core frequencies. This shows that
+there is a memory effect: the previous calls to dgemm will have a non-negligible
+impact on the performance of the new call.
+
+Therefore, it is *not* possible to perform some sort of realistic generic
+calibration, even if we do a piecewise regression afterwards. If we want to more
+faithfully predict the durations of dgemm in HPL, we need to do one separate
+calibration per block size value, nothing else can save us.
+*** 2020-01-27 Monday
+**** Discussion du lundi                                  :ARNAUD:MEETING:
+***** Factorial experiment
+Retravailler la courbe de la cellule 9 de l'expérience factorielle. Coder swap
+avec des symboles et depth avec une couleur.
+
+Enlever les boxplots quand il n'y a pas assez de points (typiquement, l'analyse
+factorielle à la fin).
+***** What-if dgemm variability
+Oublier les vraies valeurs de sigma. Prendre les valeurs de mu et appliquer un
+facteur. Mot-clé : coefficient de variation (cov).
+Coefficients à tester : 0.1, 0.01, 0.001, 0.
+***** Papier HPL
+Section 5 : encore moins de détails, enlever l'explication sur les panels. Il
+faut juste que les gens aient une compréhension basique du fonctionnement.
+Ne pas donner la notation des modèles, donner la formule directement.
+
+Section 6 : pour la figure de validation à l'échelle, garder trois courbes et
+expliquer l'histoire avec l'hétérogeneité et la variabilité temporelle.
+**** Noisy office                                                  :TOOLS:
+Pour limiter le bruit environnant *sans* mettre de la musique :
+https://mynoise.net/
+
+Une trentaine de sons différents (côte irlandaise, chants gregoriens, binaural
+beats...). Pour chacun, des curseurs permettent d'accentuer ou atténuer
+certaines composantes du son (par exemple, pour la côte irlandaise, on peut
+agir sur le volume de la pluie, du vent, du clapoti de l'eau, des vagues...).
+**** Dgemm model generation	:NOTEBOOK:PYTHON:ATTACH:
+:PROPERTIES:
+:LANGUAGE: python
+:VERSION: 3.7.3
+:Attachments: dgemm_model_generation.html
+:ID: ca28c171f738f0df2ac1fdd1124686087a1d205e553cab6f13df9f4349172aed7d13d2c46aaa805974371bb634fcbdc1b5d6edaf570c13d0146d0f08bb615a4b
+:END:
+***** Summary
+I modified the notebook from [2020-01-22 Wed] to change the dgemm model
+generation. This time, we fix the [[https://en.wikipedia.org/wiki/Coefficient_of_variation][coefficient of variation]]: the value for sigma
+is equal to the value of mu multiplied by some constant factor.
+** 2020-02 February
+*** 2020-02-07 Friday
+**** Discussion : détection de régression de performance  :ARNAUD:MEETING:STATS:
+***** Fonctionnement de geom_ellipse
+On a deux variables aléatoires X et Y. On calcule la matrice de covariance H
+de taille 2\times2 :
+ a -c
+-c  b
+
+Si les deux variables étaient i.i.d. et de variance 1, l'ellipse serait un
+cercle de rayon donné (le rayon dépend de la tolérance souhaitée, typiquement
+95%). On applique donc la matrice H au cercle. La diagonale (a, b) va l'applatir
+(si l'une des deux variables a une variance plus élevée), l'anti-diagonale (-c,
+-c) lui applique ensuite une rotation (s'il y a une correlation non-nulle entre
+les variables). Enfin, on utilise la moyenne de chacune des variables pour
+appliquer une translation au cercle.
+
+Note : l'ellipse tracée représente un [[https://fr.wikipedia.org/wiki/Intervalle_de_fluctuation][un intervalle de fluctuation]] (density
+ellipse). Plus on ajoute de points, plus l'ellipse va se stabiliser. Si on
+voulait un interval de confiance, il faudrait diviser la matrice par sqrt(n), et
+donc l'ellipse se rapprocherait de la moyenne plus on ajouterait de points.
+***** DGEMM non regression
+******* On Confidence test
+
+Since =stat_ellipse= doesn't do what I want, let's hack from the [[https://github.com/hadley/ggplot2/blob/master/R/stat-ellipse.R][source]].
+#+begin_src R :results output :session *R* :exports both
+calculate_ellipse <- function(data, vars, type, level, segments){
+  dfn <- 2
+  dfd <- nrow(data) - 1
+
+  if (!type %in% c("t", "norm", "euclid")) {
+    message("Unrecognized ellipse type")
+    ellipse <- rbind(as.numeric(c(NA, NA)))
+  } else if (dfd < 3) {
+    message("Too few points to calculate an ellipse")
+    ellipse <- rbind(as.numeric(c(NA, NA)))
+  } else {
+    if (type == "t") {
+      v <- MASS::cov.trob(data[,vars])
+    } else if (type == "norm") {
+      v <- stats::cov.wt(data[,vars])
+    } else if (type == "euclid") {
+      v <- stats::cov.wt(data[,vars])
+      v$cov <- diag(rep(min(diag(v$cov)), 2))
+    }
+    shape <- v$cov
+    center <- v$center
+    chol_decomp <- chol(shape)
+    chol_decomp = chol_decomp
+    if (type == "euclid") {
+      radius <- level/max(chol_decomp)
+    } else {
+      radius <- sqrt(dfn * stats::qf(level, dfn, dfd))/ sqrt(dfd) ### HERE!!! Let's divide by sqrt(dfd)
+    }
+    angles <- (0:segments) * 2 * pi/segments
+    unit.circle <- cbind(cos(angles), sin(angles))
+    ellipse <- t(center + radius * t(unit.circle %*% chol_decomp))
+  }
+
+  ellipse <- as.data.frame(ellipse)
+  colnames(ellipse) <- vars
+  ellipse
+}
+#+end_src
+
+******* Getting Data
+- Raw data: https://gitlab.in2p3.fr/tom.cornebize/g5k_data/blob/master/data.db
+- Regression coefficients:
+  https://gitlab.in2p3.fr/tom.cornebize/g5k_data/blob/master/stats.csv
+#+begin_src shell :results output :exports both
+cd /tmp; wget https://gitlab.in2p3.fr/tom.cornebize/g5k_data/raw/master/stats.csv 
+#+end_src
+
+#+RESULTS:
+
+#+begin_src R :results output :session *R* :exports both
+library(tidyr)
+library(readr)
+library(dplyr)
+library(broom)
+library(ggplot2)
+library(lubridate)
+library(purrr)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+Registered S3 methods overwritten by 'ggplot2':
+  method         from 
+  [.quosures     rlang
+  c.quosures     rlang
+  print.quosures rlang
+
+Attaching package: 'lubridate'
+
+The following object is masked from 'package:base':
+
+    date
+#+end_example
+
+#+begin_src R :results output :session *R* :exports both
+df = read_csv("/tmp/stats.csv");
+df
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Parsed with column specification:
+cols(
+  .default = col_double(),
+  `function` = col_character(),
+  cluster = col_character(),
+  expfile_hash = col_character()
+)
+See spec(...) for full column specifications.
+
+# A tibble: 40,916 x 26
+   `function` cluster  node   cpu  jobid start_time expfile_hash avg_gflops
+   <chr>      <chr>   <dbl> <dbl>  <dbl>      <dbl> <chr>             <dbl>
+ 1 dgemm      dahu        8     0 1.87e6 1560547719 cf32520fd5a~       28.9
+ 2 dgemm      dahu        8     1 1.87e6 1560547719 cf32520fd5a~       29.9
+ 3 dgemm      dahu        9     0 1.87e6 1560547725 cf32520fd5a~       29.8
+ 4 dgemm      dahu        9     1 1.87e6 1560547725 cf32520fd5a~       29.8
+ 5 dgemm      dahu        1     0 1.87e6 1560547806 cf32520fd5a~       27.8
+ 6 dgemm      dahu        1     1 1.87e6 1560547806 cf32520fd5a~       29.7
+ 7 dgemm      dahu        2     0 1.87e6 1560547813 cf32520fd5a~       28.5
+ 8 dgemm      dahu        2     1 1.87e6 1560547813 cf32520fd5a~       29.8
+ 9 dgemm      dahu        3     0 1.87e6 1560547827 cf32520fd5a~       28.9
+10 dgemm      dahu        3     1 1.87e6 1560547827 cf32520fd5a~       29.9
+# ... with 40,906 more rows, and 18 more variables: intercept <dbl>,
+#   intercept_residual <dbl>, mk <dbl>, mk_residual <dbl>, mn <dbl>,
+#   mn_residual <dbl>, mnk <dbl>, mnk_residual <dbl>, nk <dbl>,
+#   nk_residual <dbl>, tvalue_mk <dbl>, tvalue_mk_residual <dbl>,
+#   tvalue_mn <dbl>, tvalue_mn_residual <dbl>, tvalue_mnk <dbl>,
+#   tvalue_mnk_residual <dbl>, tvalue_nk <dbl>, tvalue_nk_residual <dbl>
+#+end_example
+
+#+begin_src R :results output :session *R* :exports both
+df %>% mutate(cluster = as.factor(cluster),
+              jobid = as.integer(jobid),
+              node = as.factor(node),
+              cpu = as.factor(cpu),
+              start_time = as_datetime(start_time)) -> df
+str(df)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+Classes 'tbl_df', 'tbl' and 'data.frame':	40916 obs. of  26 variables:
+ $ function           : chr  "dgemm" "dgemm" "dgemm" "dgemm" ...
+ $ cluster            : Factor w/ 10 levels "chetemi","chiclet",..: 3 3 3 3 3 3 3 3 3 3 ...
+ $ node               : Factor w/ 124 levels "1","2","3","4",..: 8 8 9 9 1 1 2 2 3 3 ...
+ $ cpu                : Factor w/ 4 levels "0","1","2","3": 1 2 1 2 1 2 1 2 1 2 ...
+ $ jobid              : int  1870101 1870101 1870102 1870102 1870094 1870094 1870095 1870095 1870096 1870096 ...
+ $ start_time         : POSIXct, format: "2019-06-14 21:28:39" "2019-06-14 21:28:39" ...
+ $ expfile_hash       : chr  "cf32520fd5a1fba35b2aef2115176cc4fc122f6cff4deb1e7c4535b197b61db9" "cf32520fd5a1fba35b2aef2115176cc4fc122f6cff4deb1e7c4535b197b61db9" "cf32520fd5a1fba35b2aef2115176cc4fc122f6cff4deb1e7c4535b197b61db9" "cf32520fd5a1fba35b2aef2115176cc4fc122f6cff4deb1e7c4535b197b61db9" ...
+ $ avg_gflops         : num  28.9 29.9 29.8 29.8 27.8 ...
+ $ intercept          : num  1.70e-06 2.07e-06 1.64e-06 1.77e-06 1.74e-06 ...
+ $ intercept_residual : num  2.44e-07 3.92e-07 1.96e-07 5.32e-07 3.73e-07 ...
+ $ mk                 : num  1.92e-09 1.80e-09 1.79e-09 1.78e-09 1.92e-09 ...
+ $ mk_residual        : num  1.82e-11 2.63e-11 2.44e-11 2.63e-11 1.38e-11 ...
+ $ mn                 : num  2.13e-10 1.92e-10 1.97e-10 1.94e-10 1.98e-10 ...
+ $ mn_residual        : num  9.86e-12 8.52e-12 8.49e-12 7.78e-12 1.40e-11 ...
+ $ mnk                : num  6.43e-11 6.21e-11 6.22e-11 6.22e-11 6.70e-11 ...
+ $ mnk_residual       : num  3.84e-13 8.23e-14 1.46e-13 9.34e-14 3.30e-13 ...
+ $ nk                 : num  3.09e-09 3.14e-09 3.13e-09 3.13e-09 3.21e-09 ...
+ $ nk_residual        : num  4.47e-11 3.15e-11 3.00e-11 3.17e-11 4.44e-11 ...
+ $ tvalue_mk          : num  55.5 65.5 65.8 65.3 59.8 ...
+ $ tvalue_mk_residual : num  2.91 15.99 11.68 14.61 2.07 ...
+ $ tvalue_mn          : num  6.17 7.01 7.26 7.1 6.19 ...
+ $ tvalue_mn_residual : num  1.58 5.18 4.06 4.32 2.1 ...
+ $ tvalue_mnk         : num  813 991 1000 997 914 ...
+ $ tvalue_mnk_residual: num  26.9 21.8 30.6 22.7 21.7 ...
+ $ tvalue_nk          : num  89.5 114.4 115 115 100.1 ...
+ $ tvalue_nk_residual : num  7.16 19.12 14.32 17.6 6.67 ...
+#+end_example
+
+- =avg_gflops= is the total number of flops divided by the total runtime
+  of the dgemms for this job
+- =alpha= and =alpha_residual= are estimates and go in the formula
+  =duration ~ N(alpha.X, alpha_residual.X)= where X is the dgemm
+  parameters (=mnk=, =mn=, ...)
+
+******* First plot
+
+For a given cpu, node, te measure $(Y_t^i, X_t^i)$ where $t$ is the
+measurement day and $i$ is the $i$-th dgemm configuration ($X_i = (m_i,
+n_i, k_i)$) we measured. Foreach $t$, we compute the linear regression
+$Y_t = \beta_t \cdot X_t$. The $\beta_t$ are our regression estimates, we
+assume at a given date, they all come from the same (normal)
+distribution.
+
+We want to detect, when it is unlikely that a given $\beta_t$ does not come
+from the same distribution as the one used for the $\beta_{u}$ for $u \in I_t$.
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports both :width 600 :height 400 :session *R* 
+df %>% filter(cluster == "dahu", node == 1) %>%
+    ggplot(aes(x = start_time, y = avg_gflops, color = cpu)) +
+    geom_point() + ylim(0,NA)
+#+end_src
+
+#+RESULTS:
+[[file:/tmp/babel-bYBtrp/figureLwF7mT.png]]
+
+******* Computing a simple 1D CI test
+#+begin_src R :results output :session *R* :exports both
+# df %>% filter(cluster == "dahu", node == 1, cpu==0) -> d;
+df %>% filter(cluster == "dahu", node == 15, cpu==0) -> d;
+
+interval = data.frame();
+
+NSelect = 20
+for(t in d$start_time) {
+    d %>% select(start_time) %>% filter(start_time < t) %>% arrange(start_time) %>% tail(n=NSelect) -> selected;
+    if(nrow(selected) <NSelect) { next;}
+    interval = rbind(interval, data.frame(start_time=t, selected_time = selected$start_time))
+}
+interval$start_time = as_datetime(interval$start_time)
+str(interval)
+# interval %>% tibble() -> interval
+interval %>% head()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+'data.frame':	1680 obs. of  2 variables:
+ $ start_time   : POSIXct, format: "2019-07-07 11:35:16" "2019-07-07 11:35:16" ...
+ $ selected_time: POSIXct, format: "2019-06-14 21:31:45" "2019-06-15 11:56:54" ...
+
+           start_time       selected_time
+1 2019-07-07 11:35:16 2019-06-14 21:31:45
+2 2019-07-07 11:35:16 2019-06-15 11:56:54
+3 2019-07-07 11:35:16 2019-06-16 11:47:43
+4 2019-07-07 11:35:16 2019-06-17 16:24:21
+5 2019-07-07 11:35:16 2019-06-18 20:14:18
+6 2019-07-07 11:35:16 2019-06-20 16:59:00
+#+end_example
+
+#+begin_src R :results output :session *R* :exports both
+interval$Weird = FALSE;
+interval$avg_gflops = NA;
+interval$mu = NA;
+interval$sigma = NA;
+for(t in interval$start_time) {
+    myd = d %>% filter(start_time %in% (interval %>% filter(start_time == t))$selected_time)
+    mu = mean(myd$avg_gflops)
+    sigma = sd(myd$avg_gflops)
+    myavg = (d %>% filter(start_time == t))$avg_gflops;
+    interval[interval$start_time == t,]$Weird = !(myavg < mu+2*sigma & myavg > mu-2*sigma);
+    interval[interval$start_time == t,]$mu = mu;
+    interval[interval$start_time == t,]$sigma = sigma;
+    interval[interval$start_time == t,]$avg_gflops = myavg;
+}
+dim(interval)
+summary(interval)
+interval %>% head()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+[1] 1680    6
+
+   start_time                  selected_time                   Weird        
+ Min.   :2019-07-07 11:35:16   Min.   :2019-06-14 21:31:45   Mode :logical  
+ 1st Qu.:2019-08-14 02:19:41   1st Qu.:2019-07-22 21:12:48   FALSE:1400     
+ Median :2019-10-19 12:56:22   Median :2019-10-02 13:31:17   TRUE :280      
+ Mean   :2019-10-12 01:09:49   Mean   :2019-09-18 02:08:07                  
+ 3rd Qu.:2019-11-23 23:23:25   3rd Qu.:2019-11-08 08:19:17                  
+ Max.   :2020-02-04 08:50:03   Max.   :2020-01-31 08:43:45                  
+   avg_gflops          mu            sigma       
+ Min.   :21.37   Min.   :21.72   Min.   :0.2947  
+ 1st Qu.:22.27   1st Qu.:23.38   1st Qu.:0.3934  
+ Median :25.46   Median :25.73   Median :1.2386  
+ Mean   :25.21   Mean   :25.55   Mean   :1.0756  
+ 3rd Qu.:27.66   3rd Qu.:28.15   3rd Qu.:1.5197  
+ Max.   :29.01   Max.   :28.28   Max.   :2.0885
+
+           start_time       selected_time Weird avg_gflops       mu     sigma
+1 2019-07-07 11:35:16 2019-06-14 21:31:45 FALSE   28.72154 28.22068 0.3571763
+2 2019-07-07 11:35:16 2019-06-15 11:56:54 FALSE   28.72154 28.22068 0.3571763
+3 2019-07-07 11:35:16 2019-06-16 11:47:43 FALSE   28.72154 28.22068 0.3571763
+4 2019-07-07 11:35:16 2019-06-17 16:24:21 FALSE   28.72154 28.22068 0.3571763
+5 2019-07-07 11:35:16 2019-06-18 20:14:18 FALSE   28.72154 28.22068 0.3571763
+6 2019-07-07 11:35:16 2019-06-20 16:59:00 FALSE   28.72154 28.22068 0.3571763
+#+end_example
+
+#+RESULTS:
+#+begin_example
+
+  cluster start_time    Event                                   Comment
+1    dahu 2019-07-07      G5K                          Temerature issue
+2    dahu 2019-07-07 Protocol Systematic matrix dimension randomisation
+3    dahu 2019-07-07 Protocol   Systematic matrix content randomisation
+
+'data.frame':	3 obs. of  4 variables:
+ $ cluster   : chr  "dahu" "dahu" "dahu"
+ $ start_time: chr  "2019-07-07" "2019-07-07" "2019-07-07"
+ $ Event     : chr  "G5K" "Protocol" "Protocol"
+ $ Comment   : chr  "Temerature issue" "Systematic matrix dimension randomisation" "Systematic matrix content randomisation"
+#+end_example
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports both :width 1200 :height 400 :session *R* 
+interval %>% # head(n=400) %>%
+    ggplot(aes(start_time,avg_gflops,color=Weird)) + geom_point() + geom_errorbar(aes(ymin = mu - 2*sigma, ymax = mu + 2*sigma))  + theme_bw()
+#+end_src
+
+#+RESULTS:
+[[file:/tmp/babel-bYBtrp/figurezYAjrt.png]]
+
+******* Adding a ChangeLog
+#+tblname: tom_changelog
+| cluster |  start_time | event    | comment                                                       |
+|---------+------------+----------+---------------------------------------------------------------|
+| dahu    | 2019-07-13 | Protocol | Systematic matrix dimension randomisation                     |
+| dahu    | 2019-09-01 | G5K      | Temperature issue  (may have started on the 20th of August)   |
+| dahu    | 2019-10-18 | Protocol | Systematic matrix content randomisation                       |
+| dahu    | 2019-11-27 | G5K      | Temperature issue solved (rack change and wiring improvement) |
+
+#+begin_src R :results output :session *R* :exports both :var changelog = tom_changelog
+changelog
+changelog$start_time = as_datetime(ymd(changelog$start_time))
+changelog$cluster = as.factor(changelog$cluster)
+changelog$event = as.factor(changelog$event)
+str(ChangeLog)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+  cluster start_time    event
+1    dahu 2019-09-01      G5K
+2    dahu 2019-07-13 Protocol
+3    dahu 2019-10-18 Protocol
+4    dahu 2019-11-27      G5K
+                                                        comment
+1   Temperature issue  (may have started on the 20th of August)
+2                     Systematic matrix dimension randomisation
+3                       Systematic matrix content randomisation
+4 Temperature issue solved (rack change and wiring improvement)
+
+Error in str(ChangeLog) : object 'ChangeLog' not found
+#+end_example
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports both :width 1200 :height 400 :session *R* 
+interval %>% # head(n=400) %>%
+    ggplot(aes(start_time,avg_gflops,color=Weird))  + theme_bw() +
+    geom_point() + geom_errorbar(aes(ymin = mu - 2*sigma, ymax = mu + 2*sigma))  +
+    geom_vline(data=changelog, aes(xintercept=start_time))
+#+end_src
+
+#+RESULTS:
+[[file:/tmp/babel-bYBtrp/figurerygPWn.png]]
+
+******* Cleanups
+******** Managing reference experiments more cleanly
+Syntax from https://r4ds.had.co.nz/many-models.html#list-columns-1
+#+begin_src R :results output :session *R* :exports both
+tibble(
+  x = list(1:3, 3:5), 
+  y = c("1, 2", "3, 4, 5")
+)
+dftest = tribble(
+   ~x, ~y, ~t,
+  1:3, "1, 2",  "A",
+  3:5, "3, 4, 5", "B"
+)
+print("####")
+(dftest[1,]$x)[[1]]
+print("####")
+
+5 %in% (dftest[1,]$x)[[1]]
+
+dftest %>% group_by(t) %>% mutate(nr = map_dbl(x, sum))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+# A tibble: 2 x 2
+  x         y      
+  <list>    <chr>  
+1 <int [3]> 1, 2   
+2 <int [3]> 3, 4, 5
+
+[1] "####"
+
+[1] 1 2 3
+
+[1] "####"
+
+[1] FALSE
+
+# A tibble: 2 x 4
+# Groups:   t [2]
+  x         y       t        nr
+  <list>    <chr>   <chr> <dbl>
+1 <int [3]> 1, 2    A         6
+2 <int [3]> 3, 4, 5 B        12
+#+end_example
+
+#+begin_src R :results output :session *R* :exports both
+# df %>% filter(cluster == "dahu", node == 1, cpu==0) -> d;
+df %>% filter(cluster == "dahu", node == 1, cpu==0) -> d;
+
+create_reference_set_naive = function(d, changelog) {
+    interval = data.frame();
+    NSelect = 20
+    for(t in d$start_time) {
+        d %>% select(start_time) %>% filter(start_time < t) %>% arrange(start_time) %>% tail(n=NSelect) -> selected;
+        if(nrow(selected) <NSelect) { selected = c()}
+        interval = rbind(interval, tibble(start_time=as_datetime(t), selected_time = list(selected$start_time)))
+    }
+    return(interval)
+}
+create_reference_set_smart1 = function(d, changelog) {
+    interval = data.frame();
+    NSelect = 8
+    cl_epoch = c(0,changelog$start_time);
+    for(t in d$start_time) {
+        clt = max(cl_epoch[cl_epoch<t]);
+        d %>% select(start_time) %>% filter(start_time < t, start_time>=clt) %>% arrange(start_time) -> selected;
+        if(nrow(selected) <NSelect) { selected = c()}
+        interval = rbind(interval, tibble(start_time=as_datetime(t), selected_time = list(selected$start_time)))
+    }
+    return(interval)
+}
+d %>% mutate(selected_time = create_reference_set_smart1(.,changelog %>% filter(event!="G5K"))$selected_time) -> d
+head(d)
+dim(d)
+# str(interval)
+# interval %>% head()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+# A tibble: 6 x 27
+  `function` cluster node  cpu    jobid start_time          expfile_hash
+  <chr>      <fct>   <fct> <fct>  <int> <dttm>              <chr>       
+1 dgemm      dahu    1     0     1.87e6 2019-06-14 21:30:06 cf32520fd5a~
+2 dgemm      dahu    1     0     1.87e6 2019-06-15 11:55:15 cf32520fd5a~
+3 dgemm      dahu    1     0     1.87e6 2019-06-16 11:46:10 cf32520fd5a~
+4 dgemm      dahu    1     0     1.87e6 2019-06-17 16:22:42 cf32520fd5a~
+5 dgemm      dahu    1     0     1.87e6 2019-06-18 20:06:23 cf32520fd5a~
+6 dgemm      dahu    1     0     1.87e6 2019-06-20 16:56:55 cf32520fd5a~
+# ... with 20 more variables: avg_gflops <dbl>, intercept <dbl>,
+#   intercept_residual <dbl>, mk <dbl>, mk_residual <dbl>, mn <dbl>,
+#   mn_residual <dbl>, mnk <dbl>, mnk_residual <dbl>, nk <dbl>,
+#   nk_residual <dbl>, tvalue_mk <dbl>, tvalue_mk_residual <dbl>,
+#   tvalue_mn <dbl>, tvalue_mn_residual <dbl>, tvalue_mnk <dbl>,
+#   tvalue_mnk_residual <dbl>, tvalue_nk <dbl>, tvalue_nk_residual <dbl>,
+#   selected_time <list>
+
+[1] 107  27
+#+end_example
+
+#+begin_src R :results output :session *R* :exports both
+dim(d)
+d %>% group_by(start_time) %>% mutate(
+#          foo = length(selected_time[[1]]),
+          mu = mean(d[d$start_time %in% (selected_time)[[1]],]$avg_gflops),
+          sigma = sd(d[d$start_time %in% (selected_time)[[1]],]$avg_gflops),
+          weird = !((avg_gflops < mu + 2*sigma) & (avg_gflops > mu - 2*sigma))
+          ) -> d2
+# d2
+## d2 %>% slice(c(1:2,(nrow(.)-2):nrow(.))) %>% 
+##     select(start_time, avg_gflops, mu, sigma, weird)
+#+end_src
+
+#+RESULTS:
+: [1] 107  27
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports both :width 1200 :height 400 :session *R* 
+d2 %>%
+    ggplot(aes(start_time,avg_gflops,color=weird))  + theme_bw() + scale_color_manual(values = c("FALSE"="#4DAF4A", "TRUE"= "#E41A1C"), na.value = "#999999") +
+    geom_point() + geom_errorbar(aes(ymin = mu - 2*sigma, ymax = mu + 2*sigma))  +
+    geom_vline(data=changelog, aes(xintercept=start_time))
+#+end_src
+
+#+RESULTS:
+[[file:/tmp/babel-bYBtrp/figureapraVu.png]]
+******** Further factorization
+#+begin_src R :results output :session *R* :exports both
+create_reference_set_naive = function(d, changelog) { #keep the 20 last measurements
+    interval = data.frame();
+    NSelect = 20
+    for(t in d$start_time) {
+        d %>% select(start_time) %>% filter(start_time < t) %>% arrange(start_time) %>% tail(n=NSelect) -> selected;
+        if(nrow(selected) <NSelect) { selected = c()}
+        interval = rbind(interval, tibble(start_time=as_datetime(t), selected_time = list(selected$start_time)))
+    }
+    return(interval)
+}
+create_reference_set_smart1 = function(d, changelog) { #reset according to changelog
+    interval = data.frame();
+    NSelect = 8
+    cl_epoch = c(0,changelog$start_time);
+    for(t in d$start_time) {
+        clt = max(cl_epoch[cl_epoch<t]);
+        d %>% select(start_time) %>% filter(start_time < t, start_time>=clt) %>% arrange(start_time) -> selected;
+        if(nrow(selected) <NSelect) { selected = c()}
+        interval = rbind(interval, tibble(start_time=as_datetime(t), selected_time = list(selected$start_time)))
+    }
+    return(interval)
+}
+create_reference_set_smart2 = function(d, changelog) { #reset and keep the 20 first measurements at most
+    interval = data.frame();
+    ## message(unique(d$cpu));
+    ## message(paste("WTF!",dim(d)));    stop();
+    NSelect = 8
+    cl_epoch = c(0,changelog$start_time);
+    for(t in d$start_time) {
+        clt = max(cl_epoch[cl_epoch<t]);
+        d %>% select(start_time) %>% filter(start_time < t, start_time>=clt) %>% arrange(start_time) %>% head(n=20) -> selected;
+        if(nrow(selected) <NSelect) { selected = c()}
+        interval = rbind(interval, tibble(start_time=as_datetime(t), selected_time = list(selected$start_time)))
+    }
+    return(interval)
+}
+#+end_src
+
+#+RESULTS:
+
+#+begin_src R :results output :session *R* :exports both
+threshold = qnorm(1-(1-0.05)/2,sd=1) # testing for each cpu independently
+threshold = qnorm(1-(1-sqrt(1-0.05))/2,sd=1) # testing for both cpu at once
+df %>% filter(cluster == "dahu", node %in% c(1,4,10,15,25)) %>% # 
+    group_by(cluster,cpu,node) %>%
+    do(mutate(.,selected_time = create_reference_set_smart2(.,changelog)$selected_time)) -> d # changelog %>% filter(event!="G5K")
+d %>% mutate(ccn = cluster:cpu:node) -> d
+d %>% group_by(cluster,cpu,node,start_time) %>% mutate(
+          mu = mean(d[d$start_time %in% (selected_time)[[1]] & d$ccn == ccn,]$avg_gflops),
+          sigma = sd(d[d$start_time %in% (selected_time)[[1]] & d$ccn == ccn,]$avg_gflops),
+          weird = !((avg_gflops < mu + threshold*sigma) & (avg_gflops > mu - threshold*sigma))
+          ) -> d
+#+end_src
+
+#+RESULTS:
+
+#+begin_src R :results output :session *R* :exports both
+d %>% filter(node == 25,cpu==0) %>% select(start_time,  selected_time, avg_gflops, mu,) %>% head(n=20) %>% as.data.frame()
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Adding missing grouping variables: `cluster`, `cpu`, `node`
+   cluster cpu node          start_time
+1     dahu   0   25 2019-06-14 21:31:07
+2     dahu   0   25 2019-06-15 11:55:43
+3     dahu   0   25 2019-06-16 11:46:31
+4     dahu   0   25 2019-06-17 16:22:55
+5     dahu   0   25 2019-06-18 20:17:39
+6     dahu   0   25 2019-06-20 16:59:41
+7     dahu   0   25 2019-06-21 15:19:50
+8     dahu   0   25 2019-06-22 12:14:26
+9     dahu   0   25 2019-06-23 11:24:31
+10    dahu   0   25 2019-06-24 17:46:38
+11    dahu   0   25 2019-06-26 10:40:50
+12    dahu   0   25 2019-06-27 12:15:23
+13    dahu   0   25 2019-06-28 15:56:46
+14    dahu   0   25 2019-07-01 13:34:39
+15    dahu   0   25 2019-07-04 15:22:43
+16    dahu   0   25 2019-07-05 15:25:27
+17    dahu   0   25 2019-07-07 12:41:32
+18    dahu   0   25 2019-07-08 07:56:39
+19    dahu   0   25 2019-07-09 05:35:07
+20    dahu   0   25 2019-07-09 22:26:19
+                                                                                                                                    selected_time
+1                                                                                                                                            NULL
+2                                                                                                                                            NULL
+3                                                                                                                                            NULL
+4                                                                                                                                            NULL
+5                                                                                                                                            NULL
+6                                                                                                                                            NULL
+7                                                                                                                                            NULL
+8                                                                                                                                            NULL
+9                                                  1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666
+10                                     1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071
+11                         1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398
+12             1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650
+13 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+14 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+15 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+16 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+17 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+18 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+19 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+20 1560547867, 1560599743, 1560685591, 1560788575, 1560889059, 1561049981, 1561130390, 1561205666, 1561289071, 1561398398, 1561545650, 1561637723
+   avg_gflops       mu
+1    27.78589      NaN
+2    27.63899      NaN
+3    27.18483      NaN
+4    28.01818      NaN
+5    27.52478      NaN
+6    27.26168      NaN
+7    27.05229      NaN
+8    27.14971      NaN
+9    27.21385 27.45205
+10   27.71900 27.42558
+11   27.27103 27.45492
+12   27.32491 27.43820
+13   27.21225 27.42876
+14   27.84192 27.42876
+15   27.82181 27.42876
+16   27.23065 27.42876
+17   27.33735 27.42876
+18   27.94059 27.42876
+19   27.68919 27.42876
+20   27.27128 27.42876
+#+end_example
+
+
+#+begin_src R :results output graphics :file (org-babel-temp-file "figure" ".png") :exports both :width 1700 :height 700 :session *R* 
+d %>% # filter(node == 25) %>%
+    ggplot(aes(start_time,avg_gflops,color=weird))  + facet_grid(cpu~node) +
+    theme_bw() + scale_color_manual(values = c("FALSE"="#4DAF4A", "TRUE"= "#E41A1C", "G5K"= "#008833", "Procotol"="black"), na.value = "#999999") +
+    geom_point() + geom_ribbon(color="black",aes(ymin = mu - 2*sigma, ymax = mu + 2*sigma),alpha=.2)  +
+    geom_vline(data=changelog, aes(xintercept=start_time,linetype=event))
+#+end_src
+
+#+RESULTS:
+[[file:/tmp/babel-bYBtrp/figure1yHn90.png]]
+*** 2020-02-27 Thursday
+**** READ Confidence, Prediction, and Tolerance Regions for the Multivariate Normal Distribution :STATE_OF_THE_ART:PAPER:ATTACH:
+:PROPERTIES:
+:DOI: 10.2307/2282774
+:URL: http://www.jstor.org/stable/2282774
+:AUTHORS: Victor Chew
+:Attachments: Confidence,_Prediction,_and_Tolerance_Regions_for_the_Multivariate_Normal_Distribution.pdf
+:ID: 179c87d168355376ea7d633ef6915281ed0e9732ccc9f041c41b8cfd41bb48f4e08d0b042d9914586315732b4b8472fc0687287484db8622131dde82e339f413
+:END:
+***** Summary
+Formulas for confidence, prediction, and tolerance regions for the multivariate
+normal distribution for the various cases of known and unknown mean vector and
+covariance matrix are assembled for easy reference in this expository
+paper. Tables are provided for the bivariate case.
+***** Notes
+Apparently, the author worked for the US Air Force. They modeled the impact
+point of missile launches as a bi-variate gaussian distribution (lattitude and
+longitude). Quoting section 4.1:
+#+begin_quote
+In a typical application at the Air Force Eastern Test Range, r = 1, p = 2 and
+elements of \mu are the coordinates (latitude and longitude) of the aimed splash
+point of a future missile shot. Distribution of actual impact point is assumed
+to be bivariate normal with \mu as mean vector and \Sigma as covariance matrix, the
+latter assumed known from past experience. Equation (4.1) is then the equation
+of an ellipse that has (100\gamma)% probability of containing the actual splash point
+of the next missile.
+#+end_quote
+***** BibTeX
+#+BEGIN_SRC bib :tangle bibliography.bib
+@article{10.2307/2282774,
+    author = "Chew, Victor",
+    ISSN = "01621459",
+    URL = "http://www.jstor.org/stable/2282774",
+    abstract = "Formulas for confidence, prediction, and tolerance regions for the multivariate normal distribution for the various cases of known and unknown mean vector and covariance matrix are assembled for easy reference in this expository paper. Tables are provided for the bivariate case.",
+    journal = "Journal of the American Statistical Association",
+    number = "315",
+    pages = "605--617",
+    publisher = "[American Statistical Association, Taylor & Francis, Ltd.]",
+    title = "Confidence, Prediction, and Tolerance Regions for the Multivariate Normal Distribution",
+    volume = "61",
+    year = "1966",
+    doi = "10.2307/2282774"
+}
+#+END_SRC
+** 2020-06 June
+*** 2020-06-15 Monday
+**** READ Forecasting at scale                              :STATE_OF_THE_ART:PAPER:ATTACH:
+:PROPERTIES:
+:DOI: 10.7287/peerj.preprints.3190v2
+:URL: https://doi.org/10.7287%2Fpeerj.preprints.3190v2
+:AUTHORS: Sean J Taylor, Benjamin Letham
+:Attachments: Forecasting_at_scale.pdf
+:ID: aaecd56c53a0958d76fe69c6c1fcc644d480eb6ab6683de1c955bb2d8de3cbd1f2a69e426172e35ceecd93276f27bcbea8fdecab08e050b18ff91242c69ce64a
+:END:
+***** Summary
+Forecasting is a common data science task that helps organizations with capacity
+planning, goal setting, and anomaly detection. Despite its importance, there are
+serious challenges associated with producing reliable and high quality forecasts
+— especially when there are a variety of time series and analysts with expertise
+in time series modeling are relatively rare. To address these challenges, we
+describe a practical approach to forecasting “at scale” that combines
+configurable models with analyst-in-the-loop performance analysis. We propose a
+modular regression model with interpretable parameters that can be intuitively
+adjusted by analysts with domain knowledge about the time series. We describe
+performance analyses to compare and evaluate forecasting procedures, and
+automatically flag forecasts for manual review and adjustment. Tools that help
+analysts to use their expertise most effectively enable reliable, practical
+forecasting of business time series.
+
+The paper is nicely summarized in this [[https://twitter.com/seanjtaylor/status/1123278380369973248][twitter thread]].
+***** Notes
+The model behind /prophet/ is the equation y(t) = g(t) + s(t) + h(t) + \epsilon_t
+Here, /g/ is the trend function, /s/ represents periodic changes (weekly, yearly,
+etc), /h/ is the holidays (christmas, thanksgiving, etc) and \epsilon_t is the noise
+(later assumed to be normally distributed).
+****** Trend model
+They have two different models for the trend function:
+- Nonlinear saturating growth: great to model a number of users for instance,
+  which is bounded by the number of humans. This is modeled with a logistic
+  formula like g(t) = C/(1+exp(-k(t-m)))
+  However, the bound (e.g. number of humans) is often non-constant, so they
+  changed C by C(t). Likewise, the growth rate may also change, so they
+  introduced changepoitns.
+- Linear trend with changepoints: a piecewise linear and continuous function.
+- The changepoints of either model can be specified by the analyst or selected
+  automatically by starting with a large number of breaks (e.g. one per month
+  for a several year dataset) and using a sparse prior.
+- In forecasting, they assume that the trend will continue to change at the same
+  frequency and magnitude in the future.
+****** Seasonality
+Here, they use Fourier series to model the periodicity. For a period P
+(e.g. P=365.25 or P=7), they fit the formula :
+s(t) = \sum_{n=1}^{N} (a_{n}cos(2\pi nt/P) + b_{n}sin(2\pi nt/P))
+So, they need to estimate the 2N parameters a_1,b_1,...,a_n,b_n.
+They have (empirically) found that using N=10 for yearly periodicity and N=3 for
+weekly periodicity works well.
+****** Holidays and events
+The analyst can provide a list of past and future events.
+****** Model fitting
+They use Stan for fitting the model, they even provide an (example) code:
+#+BEGIN_SRC stan
+model {
+    // Priors
+    k ∼ normal(0, 5);
+    m ∼ normal(0, 5);
+    epsilon ∼ normal(0, 0.5);
+    delta ∼ double_exponential(0, tau);
+    beta ∼ normal(0, sigma);
+    // Logistic likelihood
+    y ∼ normal(C ./ (1 + exp(-(k + A * delta) .* (t - (m + A * gamma)))) +
+    X * beta, epsilon);
+    // Linear likelihood
+    y ∼ normal((k + A * delta) .* t + (m + A * gamma) + X * beta, sigma);
+}
+#+END_SRC
+By default, they use an optimization algorithm, [[https://en.wikipedia.org/wiki/Limited-memory_BFGS][L-BFGS]], but we can also use
+Bayesian sampling to get parameters uncertainty (warning: this is much longer).
+***** Open Questions [/]
+***** BibTeX
+#+BEGIN_SRC bib :tangle bibliography.bib
+@article{Taylor_2017,
+    author = "Taylor, Sean J and Letham, Benjamin",
+    doi = "10.7287/peerj.preprints.3190v2",
+    url = "https://doi.org/10.7287%2Fpeerj.preprints.3190v2",
+    year = "2017",
+    month = "sep",
+    publisher = "{PeerJ}",
+    title = "Forecasting at scale"
+}
+#+END_SRC
+** 2020-09 September
+*** 2020-09-14 Monday
+**** READ Energy Efficiency Features of the Intel Skylake-SP Processor and Their Impact on Performance :STATE_OF_THE_ART:PAPER:ATTACH:
+:PROPERTIES:
+:DOI: 10.1109/HPCS48598.2019.9188239
+:URL: http://arxiv.org/abs/1905.12468
+:AUTHORS: Robert Schöne, Thomas Ilsche, Mario Bielert, Andreas Gocht, Daniel Hackenberg
+:Attachments: Energy_Efficiency_Features_of_the_Intel_Skylake-SP_Processor_and_Their_Impact_on_Performance.pdf
+:ID: a62bfa5c93455bf5964a912fce300ba5ab430b97dc2971e981f9723f0d824f0c3463c08b9926d56b556fe1f5f82d9491bc6cae7621dd5c21276182d5479681f4
+:END:
+***** Summary
+The overwhelming majority of High Performance Computing (HPC) systems and server
+infrastructure uses Intel x86 processors. This makes an architectural analysis
+of these processors relevant for a wide audience of administrators and
+performance engineers. In this paper, we describe the effects of hardware
+controlled energy efficiency features for the Intel Skylake-SP processor. Due to
+the prolonged micro-architecture cycles, which extend the previous Tick-Tock
+scheme by Intel, our findings will also be relevant for succeeding
+architectures. The findings of this paper include the following: C-state
+latencies increased significantly over the Haswell-EP processor generation. The
+mechanism that controls the uncore frequency has a latency of approximately 10
+ms and it is not possible to truly fix the uncore frequency to a specific
+level. The out-of-order throttling for workloads using 512 bit wide vectors also
+occurs at low processor frequencies. Data has a significant impact on processor
+power consumption which causes a large error in energy models relying only on
+instructions.
+***** Notes
+****** Skylake features
+There has been a bunch of new features in the Skylake generation, I will not
+detail them. Pretty nice drawing of the topology of a Skylake CPU in figure 1.
+
+The turbo frequency is different if we use scalar, AVX2 or AVX512
+instructions. This is even more complex, we have "light" and "heavy"
+instructions, the light AVX512 can have the (higher) frequency of AVX2.
+
+There are performance features I did not know about, that can be tuned. I should
+have a look:
+- energy performance bias,
+- energy-efficient turbo (EET)
+- uncore frequency scaling (UFS)
+- hardware P-states (HWP) (this was software in older generations)
+- per-core P-states
+****** Transition latencies and ACPI state behavior
+The latency for a P-state transition (i.e. changing the frequency) is at most
+500 µs (see figure 2).
+
+The latency for a C-state transition (i.e. going from idle to awake) is in the
+40-50 µs range and is a bit shorter when the frequency is higher. This latency
+is significantly higher with the Skylake CPU than with the previous generation
+(Haswell).
+****** Performance impact of AVX frequency transitions
+They give a nice example of what bad performance behavior can happen. A program
+is alternating phases with high-power (e.g. AVX512) and low-power (e.g. normal
+instructions). When going from low to high, the out-of-order engine is throttled
+to prevent any thermal damage to the CPU. When going from high to low, the
+frequency is not increased immediately.
+They implemented a program that alternates these phases, with an appropriate
+duration on each phase. As a result, the out-of-order engine is throttled for
+more than 30% of the execution *and* the low phases spend 85% of their time in the
+reduced AVX512 frequency (even though there is no AVX instruction here). See
+figure 7 for more details.
+****** Data-dependent power consumption
+They say that with AVX512 and the large number of cores, a lot of bits can
+change silmutaneously in a CPU. This coud lead to an increased power
+consumption.
+
+They implemented a small text program that has two variables x and y in AVX512
+registers and performs the operation x=x^y in a loop. In their experiment, the
+core frequencies remained constant during the experiment, but the power
+consumption changes, it strongly correlates with the number of set bits in the
+two variables.
+Note: in my test, this is the reverse, the power consumption is extremly stable,
+the frequency changes. I think it depends on the settings of the CPU.
+
+This power consumption that depends on the data can account for about 30% of the
+total power consumption, that's huge!
+
+They do not talk about data-dependent performance however, only power
+consumption.
+***** BibTeX
+#+BEGIN_SRC bib :tangle bibliography.bib
+@article{DBLP:journals/corr/abs-1905-12468,
+    author = {Sch{\"{o}}ne, Robert and Ilsche, Thomas and Bielert, Mario and Gocht, Andreas and Hackenberg, Daniel},
+    doi = "10.1109/HPCS48598.2019.9188239",
+    title = "Energy Efficiency Features of the Intel Skylake-SP Processor and Their Impact on Performance",
+    journal = "CoRR",
+    volume = "abs/1905.12468",
+    year = "2019",
+    url = "http://arxiv.org/abs/1905.12468",
+    archivePrefix = "arXiv",
+    eprint = "1905.12468",
+    timestamp = "Mon, 03 Jun 2019 13:42:33 +0200",
+    biburl = "https://dblp.org/rec/journals/corr/abs-1905-12468.bib",
+    bibsource = "dblp computer science bibliography, https://dblp.org"
+}
+#+END_SRC
+** 2020-10 October
+**** READ Nice blog posts: industry vs academia                    :PAPER:
+- [[https://reyammer.io/blog/2020/10/03/the-good-the-bad-and-the-bye-bye-why-i-left-my-tenured-academic-job/][The Good, the Bad, and the Bye Bye: Why I Left My Tenured Academic Job]]
