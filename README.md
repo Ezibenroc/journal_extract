@@ -8,8 +8,8 @@ several attached documents (marked with the tag `ATTACH`).  These attachments ca
 Most of the attachments are either a paper (i.e. a PDF file with an associated bibtex entry) or a Jupyter notebook. For
 these two kinds of attachments, I used the [org_attach](https://github.com/Ezibenroc/org_attach) script.
 
-It contains only a few relevant entries, I decided to heavily prune the journal before making it public for several
-reasons:
+The journal presented here only contains a few relevant entries, I decided to heavily prune the content before making it
+public for several reasons:
 
 - Size reason. The real repository takes around 2.4 GB while this one only takes 14 MB.
 - Pedagogical reason. The goal of this repository is to illustrate the methodology I used for my thesis. The full
